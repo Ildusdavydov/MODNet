@@ -1,9 +1,11 @@
 import os
 import glob
+from PIL import Image
 import cv2
 import numpy as np
 from pathlib import Path
 from typing import Tuple, Union
+import albumentations as albu
 
 import torch
 import torchvision
@@ -41,37 +43,58 @@ class AiSegmentationDataset(Dataset):
             mathPath = os.path.join(self.datasetDir, "matting", imagePartName, f"matting_{clipNumber}", f"{imageNumber}.png")
             self.mask_names.append(mathPath)
 
+        self.augmentation = albu.Compose([
+            albu.RandomGamma(gamma_limit=(50, 200)),
+            albu.OneOf([
+                albu.Compose([
+                    albu.SmallestMaxSize(self.imageSize),
+                    albu.RandomCrop(self.imageSize, self.imageSize)
+                ]),
+                albu.Compose([
+                    albu.LongestMaxSize(self.imageSize),
+                    albu.PadIfNeeded(self.imageSize, self.imageSize)
+                ])
+            ], p=1.0)
+        ])
         self.transform = torchvision.transforms.Compose([
-            torchvision.transforms.ToPILImage(),
-            torchvision.transforms.Resize((self.imageSize, self.imageSize)),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize( mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])        
         ])
         self.transform2 = torchvision.transforms.Compose([
-            torchvision.transforms.ToPILImage(),
-            torchvision.transforms.Resize((self.imageSize, self.imageSize)),
             torchvision.transforms.ToTensor()
         ])
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        frame_pth = self.image_names[index]
+        image_pth = self.image_names[index]
         mask_pth = self.mask_names[index]
 
-        frame = cv2.imread(frame_pth)
-        frame = self.transform(frame)
+        image = np.array(Image.open(image_pth).convert("RGB"))
 
-        masked = cv2.imread(mask_pth)
-        mask = (np.sum(masked, axis=2) > 0).astype(np.uint8).astype(float)
+        matting = np.array(Image.open(mask_pth).convert("RGBA"))[:, :, 3]
+
+        aug = self.augmentation(image=image, mask=matting)
+        image, matting = aug["image"], aug["mask"]
+
+        mask = np.zeros_like(matting, dtype=np.float)
+        threshold = 50
+        mask[matting < threshold] = 0.0
+        mask[matting >= threshold] = 1.0
         trimap = makeTrimap(mask, self.trimapSize)
+        # cv2.imshow("image", image)
+        # cv2.imshow("matting", matting)
+        # cv2.imshow("mask", mask)
+        # cv2.imshow("trimap", trimap)
+        # cv2.waitKey(0)
+
+        image = self.transform(image)
+
         trimap = torch.from_numpy(trimap).float()
         trimap = torch.unsqueeze(trimap, 0)
-        mask = torch.from_numpy(mask)
-        mask = torch.unsqueeze(mask, 0).float()
 
-        mask = self.transform2(mask)
-        trimap = self.transform2(trimap)
+        matting = torch.from_numpy(matting)
+        matting = torch.unsqueeze(matting, 0).float()
         
-        return frame, trimap, mask
+        return image, trimap, matting
 
     def __len__(self):
         return len(self.image_names)

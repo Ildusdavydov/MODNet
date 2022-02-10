@@ -1,4 +1,5 @@
 import math
+import cv2
 import scipy
 import numpy as np
 from scipy.ndimage import grey_dilation, grey_erosion
@@ -155,6 +156,13 @@ def supervised_training_iter(
     # calculate the detail loss
     pred_boundary_detail = torch.where(boundaries, trimap, pred_detail)
     gt_detail = torch.where(boundaries, trimap, gt_matte)
+    # cv2.imshow("trimap", trimap[0].data.cpu().numpy().transpose(1, 2, 0))
+    # cv2.imshow("pred_detail", pred_detail[0].data.cpu().numpy().transpose(1, 2, 0))
+    # cv2.imshow("pred_boundary_detail", pred_boundary_detail[0].data.cpu().numpy().transpose(1, 2, 0))
+    # cv2.imshow("gt_matte", gt_matte[0].data.cpu().numpy().transpose(1, 2, 0))
+    # cv2.imshow("gt_detail", gt_detail[0].data.cpu().numpy().transpose(1, 2, 0))
+    # cv2.imshow("boundaries", boundaries.float()[0].data.cpu().numpy().transpose(1, 2, 0))
+    # cv2.waitKey(0)
     detail_loss = torch.mean(F.l1_loss(pred_boundary_detail, gt_detail))
     detail_loss = detail_scale * detail_loss
 
