@@ -79,7 +79,10 @@ class AiSegmentationDataset(Dataset):
         threshold = 50
         mask[matting < threshold] = 0.0
         mask[matting >= threshold] = 1.0
+
         trimap = makeTrimap(mask, self.trimapSize)
+
+        matting = matting / 255
         # cv2.imshow("image", image)
         # cv2.imshow("matting", matting)
         # cv2.imshow("mask", mask)
