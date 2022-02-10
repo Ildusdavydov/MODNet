@@ -19,6 +19,25 @@ def loadStateDict(modelPath):
         state[stateKey] = modelState[key]
     return state
 
+def saveState(model, optimizer, lr_scheduler, epoch, path):
+    torch.save(
+        {
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'lr_scheduler_state_dict': lr_scheduler.state_dict()
+        }, 
+        path
+    )
+
+def loadState(model, optimizer, lr_scheduler, path):
+    checkpoint = torch.load(path, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
+    epoch = checkpoint['epoch']    
+    return model, optimizer, lr_scheduler, epoch
+
 def main():
     modelPath = "models/model.ckpt"
     pretrainedModelPath = "pretrained/modnet_webcam_portrait_matting.ckpt"
