@@ -63,7 +63,7 @@ class AiSegmentationDataset(Dataset):
                         ]),
                         albu.Compose([
                             albu.LongestMaxSize(imageSize),
-                            albu.PadIfNeeded(imageSize, imageSize)
+                            albu.PadIfNeeded(imageSize, imageSize, border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0)
                         ])
                     ], p=1.0)
                 ])
