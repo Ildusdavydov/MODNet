@@ -86,24 +86,27 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
                 logNeptune(neptuneRun, "batch", semantic_loss, detail_loss, matte_loss, semantic_iou)
         logNeptune(neptuneRun, "epoch", semantic_loss, detail_loss, matte_loss, semantic_iou)
 
+        modelPath = os.path.join(modelsPath, f"model_epoch{epoch}.ckpt")
+        statePath = os.path.join(modelsPath, f"state_epoch{epoch}.ckpt")
+        saveState(modnet, optimizer, lr_scheduler, epoch, statePath)
+        torch.save(modnet.state_dict(), modelsPath)
+
+        logger.info(f"model saved to {modelPath}")
+        lr_scheduler.step()
+
+        # evaluate test iou
         modnet.eval()
         modnetCpu = modnet.module.to("cpu")
         ious = []
         for idx, (image, _, gt_matte) in enumerate(testDataloader):
             _, _, pred_matte = modnetCpu(image, True)
             ious.append(iou(pred_matte, gt_matte).item())
+        modnet = modnet.to(device)
 
         semantic_iou = statistics.mean(ious)
         logger.info(f'Epoch: {epoch}, semantic_iou: {semantic_iou:.5f}')
         logNeptuneTest(neptuneRun, semantic_iou)
 
-        modelPath = os.path.join(modelsPath, f"model_epoch{epoch}.ckpt")
-        statePath = os.path.join(modelsPath, f"state_epoch{epoch}.ckpt")
-        saveState(modnet, optimizer, lr_scheduler, epoch, statePath)
-        torch.save(modnet.state_dict(), os.path.join(modelsPath, "model.ckpt"))
-
-        logger.info(f"model saved to {modelPath}")
-        lr_scheduler.step()
 
     torch.save(modnet.state_dict(), os.path.join(modelsPath, "model.ckpt"))
 
