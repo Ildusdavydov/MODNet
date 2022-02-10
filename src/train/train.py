@@ -52,6 +52,7 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
 
     if trainStatePath is not None:
         _, _, _, startEpoch = loadState(modnet, optimizer, lr_scheduler, trainStatePath)
+        startEpoch += 1
         print(f"train state from {trainStatePath} is restored")
 
     dataset = AiSegmentationDataset(datasetPath, imageSize, trimapWidth)
@@ -75,8 +76,6 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
                             source_files=[])
 
     for epoch in range(startEpoch, epochs):
-        statePath = os.path.join(modelsPath, f"state_epoch{epoch}.ckpt")
-        saveState(modnet, optimizer, lr_scheduler, epoch, statePath)
         for idx, (image, trimap, gt_matte) in enumerate(trainDataloader):
             image = image.to(device)
             trimap = trimap.to(device)
@@ -87,12 +86,14 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
                 logNeptune(neptuneRun, "batch", semantic_loss, detail_loss, matte_loss, semantic_iou)
         logNeptune(neptuneRun, "epoch", semantic_loss, detail_loss, matte_loss, semantic_iou)
 
+        modnet.eval()
+        modnetCpu = modnet.module.to("cpu")
         ious = []
-        for idx, (image, _, gt_matte) in enumerate(trainDataloader):
-            image = image.to(device)
-            gt_matte = gt_matte.to(device)
+        for idx, (image, _, gt_matte) in enumerate(testDataloader):
+            image = image.to("cpu")
+            gt_matte = gt_matte.to("cpu")
 
-            _, _, pred_matte = modnet(image, True)
+            _, _, pred_matte = modnetCpu(image, True)
             ious.append(iou(pred_matte, gt_matte))
 
         semantic_iou = statistics.mean(ious)

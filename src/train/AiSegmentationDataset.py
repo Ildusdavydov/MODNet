@@ -43,19 +43,7 @@ class AiSegmentationDataset(Dataset):
             mathPath = os.path.join(self.datasetDir, "matting", imagePartName, f"matting_{clipNumber}", f"{imageNumber}.png")
             self.mask_names.append(mathPath)
 
-        self.augmentation = albu.Compose([
-            albu.RandomGamma(gamma_limit=(50, 200)),
-            albu.OneOf([
-                albu.Compose([
-                    albu.SmallestMaxSize(self.imageSize),
-                    albu.RandomCrop(self.imageSize, self.imageSize)
-                ]),
-                albu.Compose([
-                    albu.LongestMaxSize(self.imageSize),
-                    albu.PadIfNeeded(self.imageSize, self.imageSize)
-                ])
-            ], p=1.0)
-        ])
+        self.augmentation = AiSegmentationDataset.makeAugmentations(self.imageSize)
         self.transform = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize( mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])        
@@ -63,6 +51,22 @@ class AiSegmentationDataset(Dataset):
         self.transform2 = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor()
         ])
+
+    @staticmethod
+    def makeAugmentations(imageSize):
+        return albu.Compose([
+                    albu.RandomGamma(gamma_limit=(50, 200)),
+                    albu.OneOf([
+                        albu.Compose([
+                            albu.SmallestMaxSize(imageSize),
+                            albu.RandomCrop(imageSize, imageSize)
+                        ]),
+                        albu.Compose([
+                            albu.LongestMaxSize(imageSize),
+                            albu.PadIfNeeded(imageSize, imageSize)
+                        ])
+                    ], p=1.0)
+                ])
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         image_pth = self.image_names[index]
