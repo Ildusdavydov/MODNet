@@ -3,7 +3,9 @@ import argparse
 import logging
 import logging.handlers
 import numpy as np
-from src.train.loadModel import loadState, saveState
+import statistics
+
+from segmentation_models_pytorch.utils.functional import iou
 
 import torch
 import torch.nn as nn
@@ -15,6 +17,7 @@ import neptune.new as neptune
 from src.models.modnet import MODNet
 from src.trainer import supervised_training_iter
 from src.train.AiSegmentationDataset import AiSegmentationDataset
+from src.train.loadModel import loadState, saveState
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,6 +39,9 @@ def logNeptune(neptuneRun, type: str, semantic_loss, detail_loss, matte_loss, se
     neptuneRun[f"training/{type}/detail_loss"].log(detail_loss)
     neptuneRun[f"training/{type}/matte_loss"].log(matte_loss)
     neptuneRun[f"training/{type}/semantic_iou"].log(semantic_iou)
+
+def logNeptuneTest(neptuneRun, semantic_iou):
+    neptuneRun[f"test/epoch/semantic_iou"].log(semantic_iou)
 
 def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapWidth: int, batch_size: int, startEpoch: int, modelsPath: str, device: str):
     lr = 0.01       # learn rate
@@ -79,9 +85,19 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
             if idx % 100 == 0:
                 logger.info(f'idx: {idx}, semantic_loss: {semantic_loss:.5f}, detail_loss: {detail_loss:.5f}, matte_loss: {matte_loss:.5f}, semantic_iou: {semantic_iou:.5f}')
                 logNeptune(neptuneRun, "batch", semantic_loss, detail_loss, matte_loss, semantic_iou)
-        logger.info(f'Epoch: {epoch}, semantic_loss: {semantic_loss:.5f}, detail_loss: {detail_loss:.5f}, matte_loss: {matte_loss:.5f}, semantic_iou: {semantic_iou:.5f}')
-        
         logNeptune(neptuneRun, "epoch", semantic_loss, detail_loss, matte_loss, semantic_iou)
+
+        ious = []
+        for idx, (image, _, gt_matte) in enumerate(trainDataloader):
+            image = image.to(device)
+            gt_matte = gt_matte.to(device)
+
+            _, _, pred_matte = modnet(image, True)
+            ious.append(iou(pred_matte, gt_matte))
+
+        semantic_iou = statistics.mean(ious)
+        logger.info(f'Epoch: {epoch}, semantic_iou: {semantic_iou:.5f}')
+        logNeptuneTest(neptuneRun, semantic_iou)
 
         modelPath = os.path.join(modelsPath, f"model_epoch{epoch}.ckpt")
         statePath = os.path.join(modelsPath, f"state_epoch{epoch}.ckpt")
