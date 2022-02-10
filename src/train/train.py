@@ -90,11 +90,8 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
         modnetCpu = modnet.module.to("cpu")
         ious = []
         for idx, (image, _, gt_matte) in enumerate(testDataloader):
-            image = image.to("cpu")
-            gt_matte = gt_matte.to("cpu")
-
             _, _, pred_matte = modnetCpu(image, True)
-            ious.append(iou(pred_matte, gt_matte))
+            ious.append(iou(pred_matte, gt_matte).item())
 
         semantic_iou = statistics.mean(ious)
         logger.info(f'Epoch: {epoch}, semantic_iou: {semantic_iou:.5f}')
