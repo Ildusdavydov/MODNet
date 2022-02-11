@@ -55,7 +55,20 @@ class AiSegmentationDataset(Dataset):
     @staticmethod
     def makeAugmentations(imageSize):
         return albu.Compose([
+                    albu.HorizontalFlip(),
                     albu.RandomGamma(gamma_limit=(50, 200)),
+                    albu.OneOf([
+                        albu.CLAHE(clip_limit=2),
+                        albu.Sharpen(),
+                        albu.Emboss(),
+                        albu.RandomBrightnessContrast(),
+                    ], p=0.3),
+                    albu.HueSaturationValue(p=0.3),
+                    albu.OneOf([
+                        albu.MotionBlur(p=0.2),
+                        albu.MedianBlur(blur_limit=3, p=0.1),
+                        albu.Blur(blur_limit=3, p=0.1),
+                    ], p=0.2),
                     albu.OneOf([
                         albu.Compose([
                             albu.SmallestMaxSize(imageSize),
@@ -65,7 +78,14 @@ class AiSegmentationDataset(Dataset):
                             albu.LongestMaxSize(imageSize),
                             albu.PadIfNeeded(imageSize, imageSize, border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0)
                         ])
-                    ], p=1.0)
+                    ], p=1.0),
+                    albu.OneOf([
+                        albu.OpticalDistortion(p=0.3),
+                        albu.GridDistortion(p=.1),
+                        albu.PiecewiseAffine(p=0.3),
+                    ], p=0.2),
+                    albu.GaussNoise(p=0.2),
+                    albu.RandomRotate90()
                 ])
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
