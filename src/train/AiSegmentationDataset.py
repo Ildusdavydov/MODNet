@@ -61,7 +61,7 @@ class AiSegmentationDataset(Dataset):
                         albu.CLAHE(clip_limit=2),
                         albu.Sharpen(),
                         albu.Emboss(),
-                        albu.RandomBrightnessContrast(),
+                        albu.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2),
                     ], p=0.3),
                     albu.HueSaturationValue(p=0.3),
                     albu.OneOf([
@@ -80,8 +80,8 @@ class AiSegmentationDataset(Dataset):
                         ])
                     ], p=1.0),
                     albu.OneOf([
-                        albu.OpticalDistortion(p=0.3),
-                        albu.GridDistortion(p=.1),
+                        albu.OpticalDistortion(border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0, p=0.3),
+                        albu.GridDistortion(border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0, p=0.1),
                         albu.PiecewiseAffine(p=0.3),
                     ], p=0.2),
                     albu.GaussNoise(p=0.2),
