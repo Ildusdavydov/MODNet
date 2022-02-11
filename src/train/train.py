@@ -5,6 +5,13 @@ import logging.handlers
 import numpy as np
 import statistics
 
+import math
+import cv2
+import scipy
+from scipy.ndimage import grey_dilation, grey_erosion
+import copy
+
+
 from segmentation_models_pytorch.utils.functional import iou
 
 import torch
@@ -15,9 +22,13 @@ from torch.utils.data import DataLoader
 import neptune.new as neptune
 
 from src.models.modnet import MODNet
-from src.trainer import supervised_training_iter
+from src.trainer import supervised_training_iter,soc_adaptation_iter
 from src.train.AiSegmentationDataset import AiSegmentationDataset
 from src.train.loadModel import loadState, saveState
+
+
+
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -112,8 +123,60 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
 
     neptuneRun.stop()
 
-def tune(modnet, datasetPath: str, imageSize: int, trimapWidth: int, batch_size: int, modelsPath: str, device: str):
-    pass
+    
+def tune(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapWidth: int, batch_size: int, startEpoch: int, modelsPath: str, device: str): 
+    # SOC model
+    lr = 0.00001    # learn rate
+    epochs = 10     # total epochs
+
+    optimizer = torch.optim.Adam(modnet.parameters(), lr=lr, betas=(0.9, 0.99))
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(0.25 * epochs), gamma=0.1, last_epoch=startEpoch)
+
+
+    if trainStatePath is not None:
+        _, _, _, startEpoch = loadState(modnet, optimizer, lr_scheduler, trainStatePath)
+        startEpoch += 1
+        print(f"train state from {trainStatePath} is restored")
+
+    dataset = AiSegmentationDataset(datasetPath, imageSize, trimapWidth)
+
+    TEST_PART = 0.1
+    indices = list(range(len(dataset)))
+    split = int(np.floor(TEST_PART * len(dataset)))
+    np.random.shuffle(indices)
+    train_indices, test_indices = indices[split:], indices[:split]
+
+    train_sampler = SubsetRandomSampler(train_indices)
+
+    trainDataloader = DataLoader(dataset, batch_size, sampler=train_sampler, drop_last=True)
+
+    project = "motionlearning/modenet-soc"
+    api_token = 'eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI2NmJhMzJiMC1iY2M0LTQ5NGUtOGI0OS0yYzA4ZmNiNTRiMmEifQ=='
+    neptuneRun = neptune.init(project = project,
+                            api_token = api_token,
+                            source_files=[])
+
+    
+
+    for epoch in range(startEpoch, epochs):
+        backup_modnet = copy.deepcopy(modnet)
+        for idx, (image, trimap, gt_matte) in enumerate(trainDataloader):
+            image = image.to(device)
+            
+            soc_semantic_loss, soc_detail_loss = soc_adaptation_iter(modnet, backup_modnet, optimizer, image)
+            if idx % 100 == 0:
+                logger.info(f'idx: {idx}, soc_semantic_loss: {soc_semantic_loss:.5f}, soc_detail_loss: {soc_detail_loss:.5f}')
+                logNeptune(neptuneRun, "batch", soc_semantic_loss, soc_detail_loss)
+        logNeptune(neptuneRun, "epoch", soc_semantic_loss, soc_detail_loss)
+    
+        modelPath = os.path.join(modelsPath, f"model_epoch{epoch}.ckpt")
+        statePath = os.path.join(modelsPath, f"state_epoch{epoch}.ckpt")
+        saveState(modnet, optimizer, lr_scheduler, epoch, statePath)
+        torch.save(modnet.state_dict(), modelsPath)
+
+
+    logger.info(f"model saved to {modelPath}")
+    lr_scheduler.step()
 
 def twoStepTrain(datasetPath: str, imageSize: int, trimapWidth: int, batch_size: int, startEpoch: int, trainStatePath: str, modelsPath: str):
     device = "cuda"
@@ -121,8 +184,10 @@ def twoStepTrain(datasetPath: str, imageSize: int, trimapWidth: int, batch_size:
     modnet = MODNet(backbone_pretrained=True)
     modnet = nn.DataParallel(modnet).to(device)
 
-    train(modnet, trainStatePath, datasetPath, imageSize, trimapWidth, batch_size, startEpoch, modelsPath, device)
-    tune(modnet, datasetPath, imageSize, trimapWidth, batch_size, modelsPath, device)
+    
+    train(modnet, trainStatePath, datasetPath, imageSize, trimapWidth, batch_size, startEpoch, modelsPath, device) # 1st model
+    
+    tune(modnet, trainStatePath, datasetPath, imageSize, trimapWidth, batch_size, startEpoch, modelsPath, device)  # 2nd model (no true labels needed)
 
 args = parseArgs()
 
