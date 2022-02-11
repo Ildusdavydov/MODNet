@@ -89,7 +89,7 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
         modelPath = os.path.join(modelsPath, f"model_epoch{epoch}.ckpt")
         statePath = os.path.join(modelsPath, f"state_epoch{epoch}.ckpt")
         saveState(modnet, optimizer, lr_scheduler, epoch, statePath)
-        torch.save(modnet.state_dict(), modelsPath)
+        torch.save(modnet.state_dict(), modelPath)
 
         logger.info(f"model saved to {modelPath}")
         lr_scheduler.step()
