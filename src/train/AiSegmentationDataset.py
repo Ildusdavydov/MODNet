@@ -71,12 +71,13 @@ class AiSegmentationDataset(Dataset):
                     ], p=0.2),
                     albu.OneOf([
                         albu.Compose([
-                            albu.SmallestMaxSize(imageSize),
+                            albu.SmallestMaxSize([imageSize, imageSize * 1.1, imageSize * 1.2]),
                             albu.RandomCrop(imageSize, imageSize)
                         ]),
                         albu.Compose([
-                            albu.LongestMaxSize(imageSize),
-                            albu.PadIfNeeded(imageSize, imageSize, border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0)
+                            albu.LongestMaxSize([imageSize, imageSize * 1.1, imageSize * 1.2]),
+                            albu.PadIfNeeded(imageSize, imageSize, border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0),
+                            albu.RandomCrop(imageSize, imageSize)
                         ])
                     ], p=1.0),
                     albu.OneOf([
