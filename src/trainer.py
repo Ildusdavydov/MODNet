@@ -305,6 +305,6 @@ def soc_adaptation_iter(
     loss.backward()
     optimizer.step()
 
-    return soc_semantic_loss, soc_detail_loss
+    return soc_semantic_loss.item(), soc_detail_loss.item()
 
 # ----------------------------------------------------------------------------------
