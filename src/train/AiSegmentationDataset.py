@@ -14,10 +14,6 @@ from torch.utils.data import Dataset
 from src.train.trimap import makeTrimap
 
 class AiSegmentationDataset(Dataset):
-    """A custom Dataset(torch.utils.data) implement three functions: __init__, __len__, and __getitem__.
-    Datasets are created from PTFDataModule.
-    """
-
     def __init__(
         self,
         datasetDir: Union[str, Path],
@@ -67,6 +63,11 @@ class AiSegmentationDataset(Dataset):
                         albu.Blur(blur_limit=3, p=0.1),
                     ], p=0.2),
                     albu.OneOf([
+                        albu.OpticalDistortion(border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0, p=0.3),
+                        albu.GridDistortion(border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0, p=0.1),
+                        albu.PiecewiseAffine(p=0.3),
+                    ], p=0.2),
+                    albu.OneOf([
                         albu.Compose([
                             albu.SmallestMaxSize([imageSize, imageSize * 1.1, imageSize * 1.2]),
                             albu.RandomCrop(imageSize, imageSize)
@@ -77,16 +78,11 @@ class AiSegmentationDataset(Dataset):
                             albu.RandomCrop(imageSize, imageSize)
                         ])
                     ], p=1.0),
-                    albu.OneOf([
-                        albu.OpticalDistortion(border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0, p=0.3),
-                        albu.GridDistortion(border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0, p=0.1),
-                        albu.PiecewiseAffine(p=0.3),
-                    ], p=0.2),
                     albu.GaussNoise(p=0.2),
                     albu.RandomRotate90()
                 ])
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         image_pth = self.image_names[index]
         mask_pth = self.mask_names[index]
 
