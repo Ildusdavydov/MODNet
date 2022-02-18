@@ -53,8 +53,8 @@ def logNeptune(neptuneRun, type: str, semantic_loss, detail_loss, matte_loss=Non
     if semantic_iou is not None:
         neptuneRun[f"training/{type}/semantic_iou"].log(semantic_iou)
 
-def logNeptuneTest(neptuneRun, semantic_iou):
-    neptuneRun[f"test/epoch/semantic_iou"].log(semantic_iou)
+def logNeptuneTest(neptuneRun, type: str, semantic_iou):
+    neptuneRun[f"test/{type}/semantic_iou"].log(semantic_iou)
 
 def evaluateModel(modnet, testDataloader):
     modnet.eval()
@@ -122,7 +122,7 @@ def train(modnet, trainStatePath: str, datasetPath: str, imageSize: int, trimapW
 
         semantic_iou = evaluateModel(modnet, testDataloader)
         logger.info(f'Epoch: {epoch}, semantic_iou: {semantic_iou:.5f}')
-        logNeptuneTest(neptuneRun, semantic_iou)
+        logNeptuneTest(neptuneRun, "epoch", semantic_iou)
 
     torch.save(modnet.state_dict(), os.path.join(modelsPath, "model.ckpt"))
 
@@ -142,7 +142,7 @@ def tune(modnet, trainStatePath: str, tuneDatasetPath, testDatasetPath: str, ima
         print(f"train state from {trainStatePath} is restored")
 
     tuneDataset = ImagesDataset(tuneDatasetPath, imageSize)
-    testDataset = ImagesDataset(tuneDatasetPath, imageSize)
+    testDataset = AiSegmentationDataset(testDatasetPath, imageSize, trimapWidth)
 
     TEST_PART = 0.1
     indices = list(range(len(testDataset)))
@@ -160,9 +160,7 @@ def tune(modnet, trainStatePath: str, tuneDatasetPath, testDatasetPath: str, ima
     neptuneRun = neptune.init(project = project,
                             api_token = api_token,
                             source_files=[])
-
     
-
     for epoch in range(startEpoch, epochs):
         backup_modnet = copy.deepcopy(modnet)
         for idx, image in enumerate(tuneDataloader):
@@ -174,6 +172,11 @@ def tune(modnet, trainStatePath: str, tuneDatasetPath, testDatasetPath: str, ima
             if idx % 100 == 0:
                 logger.info(f'idx: {idx}, soc_semantic_loss: {soc_semantic_loss:.5f}, soc_detail_loss: {soc_detail_loss:.5f}')
                 logNeptune(neptuneRun, "batch", soc_semantic_loss, soc_detail_loss, None, None)
+            if idx % 1000 == 0:
+                semantic_iou = evaluateModel(modnet, testDataloader)
+                logger.info(f'Epoch: {epoch}, semantic_iou: {semantic_iou:.5f}')
+                logNeptuneTest(neptuneRun, "batch", semantic_iou)
+
         logNeptune(neptuneRun, "epoch", soc_semantic_loss, soc_detail_loss)
     
 
@@ -185,7 +188,7 @@ def tune(modnet, trainStatePath: str, tuneDatasetPath, testDatasetPath: str, ima
 
         semantic_iou = evaluateModel(modnet, testDataloader)
         logger.info(f'Epoch: {epoch}, semantic_iou: {semantic_iou:.5f}')
-        logNeptuneTest(neptuneRun, semantic_iou)
+        logNeptuneTest(neptuneRun, "epoch", semantic_iou)
 
     torch.save(modnet.state_dict(), os.path.join(modelsPath, "model_tuned.ckpt"))
 
