@@ -22,7 +22,7 @@ gdown --id 1fCuzD2twSxfSqmM_H6FrLuAR3Qe6K7VF
 cd ..
 ```
 
-#Train
+# Train
 
 Kaggle collab is here: https://www.kaggle.com/kapulkin/modnet-training
 
