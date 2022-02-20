@@ -96,3 +96,4 @@ ENV/
 # Project files
 .vscode
 .neptune/
+data/aisegment/
