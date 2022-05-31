@@ -54,27 +54,74 @@ class Conv2dIBNormRelu(nn.Module):
     def forward(self, x):
         return self.layers(x) 
 
-
-class SEBlock(nn.Module):
-    """ SE Block Proposed in https://arxiv.org/pdf/1709.01507.pdf 
-    """
-
-    def __init__(self, in_channels, out_channels, reduction=1):
-        super(SEBlock, self).__init__()
-        self.pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(in_channels, int(in_channels // reduction), bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(int(in_channels // reduction), out_channels, bias=False),
-            nn.Sigmoid()
-        )
+class ASPPBlock(nn.Module):
+    def __init__(self, input_channels):
+        super().__init__()
+        self.input_channels = input_channels
+        self.conv1 = nn.Conv2d(input_channels, 256, (1, 1), padding=0)
+        self.conv2 = nn.Conv2d(input_channels, 256, (3, 3), dilation=6, padding=6)
+        self.conv3 = nn.Conv2d(input_channels, 256, (3, 3), dilation=12, padding=12)
+        self.conv4 = nn.Conv2d(input_channels, 256, (3, 3), dilation=18, padding=18)
+        self.conv5 = nn.Conv2d(256 * 4, 256, (1, 1), padding=0)
+        self.relu = nn.ReLU(inplace=True)
+        
+    def forward(self, inp):
+        out1 = self.relu(self.conv1(inp))
+        out2 = self.relu(self.conv2(inp))
+        out3 = self.relu(self.conv3(inp))
+        out4 = self.relu(self.conv4(inp))
+        out = torch.cat([out1, out2, out3, out4], dim=1)
+        out = self.relu(self.conv5(out))
+        return out
+class ASPPNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 64, (3, 3), padding=1)
+        self.conv2 = nn.Conv2d(64, 64, (3, 3), padding=1)
+        self.conv3 = nn.Conv2d(64, 128, (3, 3), padding=1)
+        self.conv4 = nn.Conv2d(128, 128, (3, 3), padding=1)
+        self.conv5 = nn.Conv2d(128, 256, (3, 3), padding=1)
+        self.conv6 = nn.Conv2d(256, 256, (3, 3), padding=1)
+        self.conv7 = nn.Conv2d(256, 512, (3, 3), padding=1)
+        self.conv8 = nn.Conv2d(512, 512, (3, 3), padding=1)
+        self.conv9 = nn.Conv2d(512, 512, (3, 3), padding=1)
+        self.conv10 = nn.Conv2d(512, 512, (3, 3), padding=1)
+        self.conv11 = nn.Conv2d(256, 48, (1, 1), padding=0)
+        self.conv12 = nn.Conv2d(256 + 48, 256, (3, 3), padding=1)
+        self.conv13 = nn.Conv2d(256, 256, (3, 3), padding=1)
+        self.conv14 = nn.Conv2d(256, 1, (1, 1), padding=0)
+        self.maxpool = nn.MaxPool2d((2, 2))
+        self.relu = nn.ReLU(inplace=True)
+        self.aspp = ASPPBlock(512)
     
     def forward(self, x):
-        b, c, _, _ = x.size()
-        w = self.pool(x).view(b, c)
-        w = self.fc(w).view(b, c, 1, 1)
+        out = self.relu(self.conv1(x))
+        out = self.relu(self.conv2(out))
+        out = self.maxpool(out)
+        out = self.relu(self.conv3(out))
+        out = self.relu(self.conv4(out))
+        out = self.maxpool(out)
+        out = self.relu(self.conv5(out))
+        out = self.relu(self.conv6(out))
+        out_enc_mid = out
+        out = self.maxpool(out)
+        out = self.relu(self.conv7(out))
+        out = self.relu(self.conv8(out))
+        out = self.maxpool(out)
+        out = self.relu(self.conv9(out))
+        out = self.relu(self.conv10(out))
 
-        return x * w.expand_as(x)
+        out = self.aspp(out)
+        
+        out = torchvision.transforms.functional.resize(out, out_enc_mid.size()[2:4])
+        out_enc_mid = torch.relu(self.conv11(out_enc_mid))
+        out = torch.cat([out, out_enc_mid], dim=1)
+        out = self.relu(self.conv12(out))
+        out = self.relu(self.conv13(out))
+        out = self.conv14(out)
+        out = torchvision.transforms.functional.resize(out, x.size()[2:4])
+        out = torch.sigmoid(out)
+        return out
 
 
 #------------------------------------------------------------------------------
@@ -91,7 +138,7 @@ class LRBranch(nn.Module):
         enc_channels = backbone.enc_channels
         
         self.backbone = backbone
-        self.se_block = SEBlock(enc_channels[4], enc_channels[4], reduction=4)
+        self.se_block = ASPPBlock(enc_channels[4], enc_channels[4], reduction=4)
         self.conv_lr16x = Conv2dIBNormRelu(enc_channels[4], enc_channels[3], 5, stride=1, padding=2)
         self.conv_lr8x = Conv2dIBNormRelu(enc_channels[3], enc_channels[2], 5, stride=1, padding=2)
         self.conv_lr = Conv2dIBNormRelu(enc_channels[2], 1, kernel_size=3, stride=2, padding=1, with_ibn=False, with_relu=False)
